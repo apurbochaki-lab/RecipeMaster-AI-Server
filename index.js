@@ -45,6 +45,7 @@ async function run() {
 
         const database = client.db("RecipeMaster-DB");
         const recipesCollection = database.collection("recipes")
+        const reviewCollection = database.collection("reviews")
 
 
         // Add Recipe --> POST to database
@@ -145,10 +146,159 @@ async function run() {
             }
         });
 
+        // Recipe Details --> Get single data details
+        app.get("/api/details/single-recipe/:id", async (req, res) => {
+            try {
+                const { userId } = req.query;
+                const { id: recipeId } = req.params;
+                const query = {
+                    _id: new ObjectId(recipeId)
+                }
+
+                const recipeDetails = await recipesCollection.findOne(query)
+
+                // User already reviewed or not
+                const reviewQuery = {
+                    recipeId,
+                    "userInfo.userId": userId
+                }
+
+                let isReviewed = false;
+                const isReviewExist = await reviewCollection.findOne(reviewQuery)
+                if (isReviewExist) {
+                    isReviewed = true
+                }
 
 
+                res.json({ ...recipeDetails, isReviewed })
 
+            } catch (error) {
+                console.error("Error getting recipe details!", error);
+                res.status(500).json({
+                    success: false,
+                    message: "Failed to get recipe details | Internal error 500",
+                    error
+                })
+            }
+        })
 
+        // Recipe Details --> Recipe review
+        app.post("/api/details/recipe-review", async (req, res) => {
+            try {
+                const data = req.body;
+                const reviewData = {
+                    ...data,
+                    createdAt: new Date()
+                }
+
+                const recipeId = reviewData.recipeId;
+                const userId = reviewData.userInfo.userId;
+                const query = {
+                    recipeId,
+                    "userInfo.userId": userId
+                }
+
+                // Per user can review one time
+                const isExist = await reviewCollection.findOne(query)
+                // console.log("isExist : ", isExist)
+                if (isExist) {
+                    res.json({ isExist: true, message: "User already submitted review" })
+                } else {
+                    const submitReview = await reviewCollection.insertOne(reviewData)
+                }
+
+                // Need to update rating info
+                const filter = { _id: new ObjectId(recipeId) }
+                const recipe = await recipesCollection.findOne(filter)
+
+                const rating = reviewData?.rating;
+                const ratingSum = recipe?.ratingSum;
+                const reviewCount = recipe?.reviewCount;
+
+                // Calculation rating
+                const newRatingSum = ratingSum + rating;
+                const newReviewCount = reviewCount + 1;
+                const avgRating = Number((newRatingSum / newReviewCount).toFixed(1));
+
+                // Now update the rating values in the recipe data
+                const updatedRating = await recipesCollection.updateOne(filter, {
+                    $set: {
+                        rating: avgRating,
+                        ratingSum: newRatingSum,
+                        reviewCount: newReviewCount
+                    }
+                })
+
+                res.json({ isExist: false, message: "Review submitted." })
+
+            } catch (error) {
+                console.error("Error getting recipe details!", error);
+                res.status(500).json({
+                    success: false,
+                    message: "Failed to get recipe details | Internal error 500",
+                    error
+                })
+            }
+        })
+
+        // Recipe Details --> Recent Reviews of all users
+        app.get("/api/details/reviews", async (req, res) => {
+            try {
+                const { recipeId } = req.query;
+                const result = await reviewCollection.find({ recipeId }).toArray();
+                res.json(result)
+
+            } catch (error) {
+                console.error("Error getting recipe details!", error);
+                res.status(500).json({
+                    success: false,
+                    message: "Failed to get recipe details | Internal error 500",
+                    error
+                })
+            }
+        })
+
+        // Manage Recipes --> Get my posted recipes
+        app.get("/api/recipes/my-recipes", async (req, res) => {
+            try {
+                const { userId } = req.query;
+                const query = {
+                    "author.userId": userId
+                }
+
+                const myRecipes = await recipesCollection.find(query).toArray()
+                res.json(myRecipes)
+
+            } catch (error) {
+                console.error("Error getting recipes!", error);
+                res.status(500).json({
+                    success: false,
+                    message: "Failed to get recipes | Internal error 500",
+                    error
+                })
+            }
+        })
+
+        // Manage --> Delete
+        app.delete("/api/recipes/manage/delete-recipe", async (req, res) => {
+            try {
+                const { recipeId } = req.query;
+                const filter = {
+                    _id: new ObjectId(recipeId)
+                }
+
+                const result = await recipesCollection.deleteOne(filter);
+                res.json(result)
+
+            } catch (error) {
+                console.error("Error deleting recipe!", error);
+                res.status(500).json({
+                    success: false,
+                    message: "Failed to delete recipe | Internal error 500",
+                    error
+                })
+            }
+        })
 
         // await client.db("admin").command({ ping: 1 });
         console.log("Pinged your deployment. You successfully connected to MongoDB!");
