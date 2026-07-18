@@ -69,6 +69,85 @@ async function run() {
             }
         })
 
+        // Recipes --> Get all recipes with search & pagination
+        app.get("/api/all-recipes", async (req, res) => {
+            try {
+                // Pagination
+                const page = Number(req.query.page) || 1;
+                const limit = Number(req.query.limit) || 8;
+                const skip = (page - 1) * limit;
+                // console.log("Page:", page)
+
+                // Search filters
+                const search = req.query.search;
+                const category = req.query.category;
+                const sort = req.query.sort;
+
+                const query = {};
+
+                if (search) {
+                    query.title = {
+                        $regex: search,
+                        $options: "i",
+                    };
+                }
+
+                if (category && category !== "All") {
+                    query.category = category;
+                }
+
+                // Sorting
+                let sortOption = {};
+
+                if (sort === "newest") {
+                    sortOption = { createdAt: -1 };
+                }
+
+                if (sort === "oldest") {
+                    sortOption = { createdAt: 1 };
+                }
+
+                if (sort === "rating") {
+                    sortOption = { rating: -1 };
+                }
+
+                if (sort === "cookingTime") {
+                    sortOption = { cookingTime: 1 };
+                }
+
+                // Total Recipes Count
+                const totalRecipes = await recipesCollection.countDocuments(query);
+
+                // Final result
+                const recipes = await recipesCollection
+                    .find(query)
+                    .sort(sortOption)
+                    .skip(skip)
+                    .limit(limit)
+                    .toArray();
+
+                res.send({
+                    success: true,
+                    currentPage: page,
+                    totalRecipes,
+                    totalPages: Math.ceil(totalRecipes / limit),
+                    totalItems: totalRecipes,
+                    data: recipes,
+                });
+
+            } catch (error) {
+                console.error(error);
+                res.status(500).send({
+                    success: false,
+                    message: "Failed to fetch recipes",
+                    error
+                });
+            }
+        });
+
+
+
+
 
 
         // await client.db("admin").command({ ping: 1 });
