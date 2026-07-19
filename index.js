@@ -1,9 +1,6 @@
 const dns = require("node:dns");
 dns.setServers(["8.8.8.8", "8.8.4.4"]);
 
-// import express from "express";
-// import { createRemoteJWKSet, jwtVerify } from "jose-cjs";
-
 const express = require('express');
 const app = express()
 const port = process.env.PORT || 5000
@@ -22,7 +19,8 @@ app.get('/', (req, res) => {
 
 
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
-// import { MongoClient, ObjectId, ServerApiVersion, } from "mongodb";
+const { jwtVerify, createRemoteJWKSet } = require("jose-cjs");
+
 const uri = process.env.MONGODB_URI;
 
 const client = new MongoClient(uri, {
@@ -35,9 +33,9 @@ const client = new MongoClient(uri, {
 
 
 // Token JWKS
-// const JWKS = createRemoteJWKSet(
-//     new URL(`${process.env.NEXT_PUBLIC_CLIENT_URL}/api/auth/jwks`)
-// );
+const JWKS = createRemoteJWKSet(
+    new URL(`${process.env.NEXT_PUBLIC_CLIENT_URL}/api/auth/jwks`)
+);
 
 async function run() {
     try {
@@ -48,8 +46,48 @@ async function run() {
         const reviewCollection = database.collection("reviews")
 
 
+        // Verification
+        const tokenChecker = (req, res, next) => {
+            console.log("✅ Auth Header : ", req.headers)
+            console.log("💖 Token : ", req.headers.authorization)
+            next()
+        }
+
+        // Token verify
+        const verifyToken = async (req, res, next) => {
+            try {
+                // Validations
+                const authHeader = req.headers.authorization;
+                if (!authHeader) {
+                    return res.status(401).json({ message: "Unauthorized: No token provided" });
+                }
+
+                const token = authHeader.split(" ")[1];
+                if (!token) {
+                    return res.status(403).json({ message: "Forbidden: Invalid token" });
+                }
+
+                // Verify
+                const { payload } = await jwtVerify(token, JWKS)
+                console.log("Payload", payload)
+                next()
+
+            } catch (error) {
+                console.error("Error with token verification", error);
+                return res.status(401).json({ message: "Unauthorized user" })
+            }
+        }
+
+
+        // Featured Section
+        app.get("/api/featured-recipes", async (req, res) => {
+            const result = await recipesCollection.find({ isFeatured: true }).skip(2).limit(4).toArray();
+            res.json(result);
+        })
+
+
         // Add Recipe --> POST to database
-        app.post("/api/recipe/add-new", async (req, res) => {
+        app.post("/api/recipe/add-new", verifyToken, async (req, res) => {
             try {
                 const data = req.body;
                 const newData = {
@@ -280,7 +318,7 @@ async function run() {
         })
 
         // Manage --> Delete
-        app.delete("/api/recipes/manage/delete-recipe", async (req, res) => {
+        app.delete("/api/recipes/manage/delete-recipe", verifyToken, async (req, res) => {
             try {
                 const { recipeId } = req.query;
                 const filter = {
