@@ -124,6 +124,7 @@ async function run() {
 
                 const query = {};
 
+                // Search condition
                 if (search) {
                     query.title = {
                         $regex: search,
@@ -131,6 +132,7 @@ async function run() {
                     };
                 }
 
+                // Category
                 if (category && category !== "All") {
                     query.category = category;
                 }
@@ -156,6 +158,7 @@ async function run() {
 
                 // Total Recipes Count
                 const totalRecipes = await recipesCollection.countDocuments(query);
+                const totalPages = Math.ceil(totalRecipes / limit);
 
                 // Final result
                 const recipes = await recipesCollection
@@ -169,7 +172,7 @@ async function run() {
                     success: true,
                     currentPage: page,
                     totalRecipes,
-                    totalPages: Math.ceil(totalRecipes / limit),
+                    totalPages,
                     totalItems: totalRecipes,
                     data: recipes,
                 });
@@ -304,7 +307,7 @@ async function run() {
                     "author.userId": userId
                 }
 
-                const myRecipes = await recipesCollection.find(query).toArray()
+                const myRecipes = await recipesCollection.find(query).sort({ createdAt: -1 }).toArray()
                 res.json(myRecipes)
 
             } catch (error) {
